@@ -57,7 +57,6 @@ const loadScript = (src) => {
  */
 const openRazorpay = async (payment) => {
 
-  // 🔥 Load Razorpay script
   const loaded = await loadScript("https://checkout.razorpay.com/v1/checkout.js");
 
   if (!loaded) {
@@ -70,19 +69,44 @@ const openRazorpay = async (payment) => {
       key: payment.keyId,
       amount: payment.amount,
       currency: payment.currency,
-      order_id: payment.paymentId,
+      order_id: payment.orderId,
 
-      handler: function (response) {
+      handler: async function (response) {
 
-        const result = {
-          gateway: "RAZORPAY",
-          status: "SUCCESS",
-          paymentId: response.razorpay_payment_id,
-          orderId: response.razorpay_order_id,
-          signature: response.razorpay_signature
-        };
 
-        resolve(result);
+        try {
+          console.log("Razorpay payment response:", response);
+          const client = apiClient();
+
+          // 🔥 CALL UPDATE API
+          const updateRes = await client.put(
+            `/payments/update?paymentId=${response.razorpay_payment_id}&orderId=${response.razorpay_order_id}`
+          );
+
+          console.log("Payment update response:", updateRes.data);
+
+          const result = {
+            gateway: "RAZORPAY",
+            status: "SUCCESS",
+            paymentId: response.razorpay_payment_id,
+            orderId: response.razorpay_order_id,
+            signature: response.razorpay_signature,
+            updateResponse: updateRes.data // 🔥 backend response
+          };
+
+          resolve(result);
+
+        } catch (err) {
+
+          console.error("Update API failed:", err);
+
+          reject({
+            gateway: "RAZORPAY",
+            status: "FAILED",
+            message: "Payment success but update failed"
+          });
+
+        }
       },
 
       modal: {
@@ -97,13 +121,12 @@ const openRazorpay = async (payment) => {
 
     const rzp = new window.Razorpay(options);
 
-    console.log("Opening Razorpay..."); // debug
+    console.log("Opening Razorpay...");
 
-    rzp.open(); // 🔥 this will now work
+    rzp.open();
 
   });
 };
-
 /**
  * Stripe payment UI
  */
