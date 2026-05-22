@@ -7,19 +7,31 @@ export const createPayment = async (data) => {
 
   const client = apiClient();
 
+  console.log("Creating payment with data:", data);
+
+  // 🔥 Send all data including trackId
   const res = await client.post("/payments", data);
 
   const payment = res.data;
 
+  // 🔥 Razorpay
   if (payment.gatewayType === "RAZORPAY") {
-    return await openRazorpay(payment);
+    return await openRazorpay(payment, data);
   }
 
+  // 🔥 Stripe
   if (payment.gatewayType === "STRIPE") {
-    return await openStripe(payment);
+    return await openStripe(payment, data);
   }
+
+  throw new Error("Unsupported payment gateway");
 
 };
+
+
+/**
+ * Refund payment
+ */
 export const refundPayment = async (paymentId) => {
 
   const client = apiClient();
@@ -35,29 +47,37 @@ export const refundPayment = async (paymentId) => {
   return data;
 };
 
+
 /**
  * Load external script
  */
 const loadScript = (src) => {
+
   return new Promise((resolve) => {
 
     const script = document.createElement("script");
+
     script.src = src;
 
     script.onload = () => resolve(true);
+
     script.onerror = () => resolve(false);
 
     document.body.appendChild(script);
+
   });
+
 };
 
 
 /**
  * Razorpay checkout
  */
-const openRazorpay = async (payment) => {
+const openRazorpay = async (payment, originalData) => {
 
-  const loaded = await loadScript("https://checkout.razorpay.com/v1/checkout.js");
+  const loaded = await loadScript(
+    "https://checkout.razorpay.com/v1/checkout.js"
+  );
 
   if (!loaded) {
     throw new Error("Razorpay SDK failed to load");
@@ -66,32 +86,54 @@ const openRazorpay = async (payment) => {
   return new Promise((resolve, reject) => {
 
     const options = {
+
       key: payment.keyId,
+
       amount: payment.amount,
+
       currency: payment.currency,
+
       order_id: payment.orderId,
 
       handler: async function (response) {
 
-
         try {
+
           console.log("Razorpay payment response:", response);
+
           const client = apiClient();
 
-          // 🔥 CALL UPDATE API
+          // 🔥 Update payment API
           const updateRes = await client.put(
             `/payments/update?paymentId=${response.razorpay_payment_id}&orderId=${response.razorpay_order_id}`
           );
 
           console.log("Payment update response:", updateRes.data);
 
+          // 🔥 Final frontend response
           const result = {
+
             gateway: "RAZORPAY",
+
             status: "SUCCESS",
+
             paymentId: response.razorpay_payment_id,
+
             orderId: response.razorpay_order_id,
+
             signature: response.razorpay_signature,
-            updateResponse: updateRes.data // 🔥 backend response
+
+            // 🔥 Return original values
+            trackId: originalData.trackId,
+
+            amount: originalData.amount,
+
+            currency: originalData.currency,
+
+            description: originalData.description,
+
+            updateResponse: updateRes.data
+
           };
 
           resolve(result);
@@ -101,22 +143,39 @@ const openRazorpay = async (payment) => {
           console.error("Update API failed:", err);
 
           reject({
+
             gateway: "RAZORPAY",
+
             status: "FAILED",
+
+            trackId: originalData.trackId,
+
             message: "Payment success but update failed"
+
           });
 
         }
+
       },
 
       modal: {
+
         ondismiss: function () {
+
           reject({
+
             gateway: "RAZORPAY",
-            status: "CANCELLED"
+
+            status: "CANCELLED",
+
+            trackId: originalData.trackId
+
           });
+
         }
+
       }
+
     };
 
     const rzp = new window.Razorpay(options);
@@ -126,32 +185,48 @@ const openRazorpay = async (payment) => {
     rzp.open();
 
   });
+
 };
+
+
 /**
  * Stripe payment UI
  */
-const openStripe = async (payment) => {
+const openStripe = async (payment, originalData) => {
 
   return new Promise(async (resolve, reject) => {
 
-    const loaded = await loadScript("https://js.stripe.com/v3/");
+    const loaded = await loadScript(
+      "https://js.stripe.com/v3/"
+    );
 
     if (!loaded) {
+
       reject({
+
         gateway: "STRIPE",
+
         status: "FAILED",
+
+        trackId: originalData.trackId,
+
         message: "Stripe SDK failed to load"
+
       });
+
       return;
+
     }
 
     const stripe = window.Stripe(payment.publishableKey);
 
     const elements = stripe.elements();
+
     const card = elements.create("card");
 
-    // create container
+    // 🔥 Create popup container
     const container = document.createElement("div");
+
     container.id = "stripe-container";
 
     container.innerHTML = `
@@ -167,11 +242,21 @@ const openStripe = async (payment) => {
         align-items:center;
         z-index:9999;
       ">
-        <div style="background:white;padding:20px;width:400px">
+        <div style="
+          background:white;
+          padding:20px;
+          width:400px;
+          border-radius:10px;
+        ">
           <h3>Stripe Payment</h3>
+
           <div id="card-element"></div>
+
           <br/>
-          <button id="stripe-pay-btn">Pay</button>
+
+          <button id="stripe-pay-btn">
+            Pay
+          </button>
         </div>
       </div>
     `;
@@ -184,18 +269,27 @@ const openStripe = async (payment) => {
       .getElementById("stripe-pay-btn")
       .addEventListener("click", async () => {
 
-        const result = await stripe.confirmCardPayment(payment.clientSecret, {
-          payment_method: {
-            card: card
+        const result = await stripe.confirmCardPayment(
+          payment.clientSecret,
+          {
+            payment_method: {
+              card: card
+            }
           }
-        });
+        );
 
         if (result.error) {
 
           reject({
+
             gateway: "STRIPE",
+
             status: "FAILED",
+
+            trackId: originalData.trackId,
+
             message: result.error.message
+
           });
 
         } else {
@@ -203,11 +297,21 @@ const openStripe = async (payment) => {
           const intent = result.paymentIntent;
 
           resolve({
+
             gateway: "STRIPE",
+
             status: intent.status,
+
             paymentId: intent.id,
+
             amount: intent.amount,
-            currency: intent.currency
+
+            currency: intent.currency,
+
+            trackId: originalData.trackId,
+
+            description: originalData.description
+
           });
 
         }
@@ -217,4 +321,5 @@ const openStripe = async (payment) => {
       });
 
   });
+
 };
