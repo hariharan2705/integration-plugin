@@ -1,4 +1,4 @@
-import { apiClient } from "./apiClient.js";
+import { API_KEY, apiClient } from "./apiClient.js";
 
 /**
  * Main payment entry
@@ -6,20 +6,24 @@ import { apiClient } from "./apiClient.js";
 export const createPayment = async (data) => {
 
   const client = apiClient();
+  const payload = {
+    ...data,
+    apiKey: API_KEY,
+  };
 
-  console.log("Creating payment with data:", data);
+  console.log("Creating payment with data:", payload);
 
-  // 🔥 Send all data including trackId
-  const res = await client.post("/payments", data);
+
+  const res = await client.post("/payments", payload);
 
   const payment = res.data;
 
-  // 🔥 Razorpay
+
   if (payment.gatewayType === "RAZORPAY") {
     return await openRazorpay(payment, data);
   }
 
-  // 🔥 Stripe
+
   if (payment.gatewayType === "STRIPE") {
     return await openStripe(payment, data);
   }
