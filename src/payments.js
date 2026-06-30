@@ -20,12 +20,12 @@ export const createPayment = async (data) => {
 
 
   if (payment.gatewayType === "RAZORPAY") {
-    return await openRazorpay(payment, data);
+    return await openRazorpay(payment, payload);
   }
 
 
   if (payment.gatewayType === "STRIPE") {
-    return await openStripe(payment, data);
+    return await openStripe(payment, payload);
   }
 
   throw new Error("Unsupported payment gateway");

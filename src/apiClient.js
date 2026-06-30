@@ -1,6 +1,6 @@
 import axios from "axios";
 
-let API_KEY = "";
+export let API_KEY = "";
 
 export const initPlugin = (config) => {
   if (!config?.apiKey) {
