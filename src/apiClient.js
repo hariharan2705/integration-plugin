@@ -16,7 +16,8 @@ export const apiClient = () => {
   }
 
   return axios.create({
-    baseURL: "http://156.67.110.83:9080/gateways",
+    // baseURL: "http://156.67.110.83:9080/gateways",
+    baseURL: "http://localhost:8096/gateways",
     headers: {
       "Content-Type": "application/json",
       "X-API-KEY": API_KEY,
